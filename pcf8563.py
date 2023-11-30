@@ -138,6 +138,16 @@ class PCF8563:
         tens, units = divmod(dec, 10)
         return (tens << 4) + units
 
+    def __get_weekday(self, date, month, year):
+        if month < 3:
+            month += 12
+            year -= 1
+        weekday = (
+            (-1 + date + (13 * month + 8) // 5 + year + year // 4 
+            - year // 100 + year // 400)
+            % 7)
+        return weekday
+
     def datetime(self):
         """Return a tuple such as (year, month, date, weekday, hours, minutes,
         seconds, subseconds[63,0]).
@@ -169,12 +179,14 @@ class PCF8563:
             raise ValueError('Hours is out of range [0,23].')
         if (date is None) or date < 1 or date > 31:
             raise ValueError('Date is out of range [1,31].')
-        if (weekday is None) or weekday < 0 or weekday > 6:
-            raise ValueError('Day is out of range [0,6].')
         if (month is None) or month < 1 or month > 12:
             raise ValueError('Month is out of range [1,12].')
         if (year is None) or year < 0 or year > 99:
             raise ValueError('Years is out of range [0,99].')
+        if weekday is None:
+            weekday = self.__get_weekday(date, month, year + 2000)
+        elif weekday < 0 or weekday > 6:
+            raise ValueError('Day is out of range [0,6].')
 
         self._buffer[_SEC_REG] = self.__dec2bcd(seconds)
         self._buffer[_MIN_REG] = self.__dec2bcd(minutes)
