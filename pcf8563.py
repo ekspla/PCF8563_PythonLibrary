@@ -1,7 +1,7 @@
 '''
 NOV. 2023, modified by ekspla.
 
-The code was modified to read/write mutiple date & time registers at once.
+The code was modified to read/write multiple date & time registers at once.
 
 CAUTION:
   From the datasheets and application notes (e.g. AN10652), it is clear that 
