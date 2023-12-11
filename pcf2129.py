@@ -75,7 +75,7 @@ _TIMER2_REG = const(0x11)
 
 _AGING_REG = const(0x19)  # From 0 (+8) to 15 (-7 ppm); default is 8 (0 ppm).
 
-_VOL_LOW_MASK = const(0x80)
+_OSC_STOP_FLAG = const(0x80)
 _minuteS_MASK = const(0x7F)
 _HOUR_MASK = const(0x3F)
 _WEEKDAY_MASK = const(0x07)
@@ -102,10 +102,11 @@ _TIMER_TD10 = const(0x03)
 _NO_ALARM = const(0xFF)
 _ALARM_ENABLE = const(0x80)
 
-_TCR_4MIN = const(0x00)  # Default
-_TCR_2MIN = const(0x40)
-_TCR_1MIN = const(0x80)
-_TCR_30SEC = const(0xC0)
+_TCR_MASK = const(0xC0)
+#_TCR_4MIN = const(0x00)  # Default
+#_TCR_2MIN = const(0x40)
+#_TCR_1MIN = const(0x80)
+#_TCR_30SEC = const(0xC0)
 _OTP = const(0x20)
 CLK_OUT_FREQ_32_DOT_768KHZ = const(0x00)  # Default
 CLK_OUT_FREQ_16_DOT_384KHZ = const(0x01)
@@ -123,7 +124,7 @@ class PCF2129:
         """
         self.i2c = i2c
         self.address = address
-        self._buffer = bytearray(18)
+        self._buffer = bytearray(_AGING_REG - _STAT1_REG + 1)
         self._bytebuf = bytearray(1)
         self._mv = memoryview(self._buffer)
         self._mv_datetime = self._mv[_SEC_REG:_YEAR_REG + 1]
@@ -137,6 +138,9 @@ class PCF2129:
             _WEEKDAY_MASK, 
             _MONTH_MASK, 
             _YEAR_MASK))
+        if self.check_osc_stop():
+            self.otp_refresh()
+        self.set_clk_out_frequency(CLK_HIGH_IMPEDANCE)
 
     def __write_byte(self, reg, val):
         self._bytebuf[0] = val & 0xff
@@ -218,6 +222,19 @@ class PCF2129:
         # STOP/START not necessary because of the compensation by internal watchdog.
         self.__write_bytes(_DATETIME_REG, self._mv_datetime)
 
+    def temp_control(self, value=None):
+        """Read/Set temperature control register, from 0 (4 min) to 3 (0.5 min); default is 0 (4 min).
+        """
+        self._buffer[_SQW_REG] = self.__read_byte(_SQW_REG)
+        if value is None:
+            return (self._buffer[_SQW_REG] & _TCR_MASK) >> 6
+        self._buffer[_SQW_REG] &= ~_TCR_MASK
+        self._buffer[_SQW_REG] |= ((value & 0x03) << 6)
+        self.__write_byte(_SQW_REG, self._buffer[_SQW_REG])
+
+    def check_osc_stop(self):
+        return bool(self.__read_byte(_SEC_REG) & _OSC_STOP_FLAG)
+
     def otp_refresh(self):
         self._buffer[_SQW_REG] = self.__read_byte(_SQW_REG) & ~_OTP
         self.__write_byte(_SQW_REG, self._buffer[_SQW_REG])
@@ -246,11 +263,51 @@ class PCF2129:
         """
         self.set_datetime(time.localtime())
 
+    def minute_int(self, flag=None):
+        """Set/reset minute interrupt
+        """
+        if flag is None:
+            return bool(self.__read_byte(_STAT1_REG) & _MI)
+        elif flag:
+            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) | _MI
+        else:
+            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) & ~_MI
+        self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
+
+    def second_int(self, flag=None):
+        """Set/reset second interrupt
+        """
+        if flag is None:
+            return bool(self.__read_byte(_STAT1_REG) & _MI)
+        elif flag:
+            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) | _SI
+        else:
+            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) & ~_SI
+        self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
+
+    def minute_second_flag(self, flag=None):
+        """Read/clear the minute second interrupt flag
+        """
+        self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG)
+        if flag is None:
+            return bool(self._buffer[_STAT2_REG] & _MSF)
+        self._buffer[_STAT2_REG] &= ~_MSF
+        self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
+
     def set_clk_out_frequency(self, frequency=CLK_OUT_FREQ_1_HZ):
         """Set the clock output pin frequency
         """
         self._buffer[_SQW_REG] = frequency
         self.__write_byte(_SQW_REG, self._buffer[_SQW_REG])
+
+    def aging_offset(self, value=None):
+        """Set clock offset, from 0 (+8 ppm) to 15 (-7 ppm); default is 8 (0 ppm).
+        """
+        if value is None:
+            self._buffer[_AGING_REG] = self.__read_byte(_AGING_REG)
+            return self._buffer[_AGING_REG]
+        self._buffer[_AGING_REG] = value & 0x0F
+        self.__write_byte(_AGING_REG, self._buffer[_AGING_REG])
 
     def check_if_alarm_on(self):
         """Read the register to get the alarm enabled
