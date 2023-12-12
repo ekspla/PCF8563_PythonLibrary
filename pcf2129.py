@@ -1,6 +1,6 @@
 '''
 DEC. 2023, the modified PCF8563 code was adapted to PCF2129 by ekspla.
-Functions such as timers, watchdogs, 12 hour mode, etc. not supported.
+Functions such as timers, watchdogs, timestamps, 12 hour mode, etc. not supported.
 
 
 NOV. 2023, modified by ekspla.
@@ -73,6 +73,8 @@ _SQW_REG = const(0x0F)
 _TIMER1_REG = _TIMERS_REG = const(0x10)
 _TIMER2_REG = const(0x11)
 
+# From 0x12 to 0x18: timestamp registers 
+
 _AGING_REG = const(0x19)  # From 0 (+8) to 15 (-7 ppm); default is 8 (0 ppm).
 
 _OSC_STOP_FLAG = const(0x80)
@@ -80,7 +82,6 @@ _minuteS_MASK = const(0x7F)
 _HOUR_MASK = const(0x3F)
 _WEEKDAY_MASK = const(0x07)
 _YEAR_MASK = const(0xff)
-#_CENTURY_MASK = const(0x80)
 _DATE_MASK = const(0x3F)
 _MONTH_MASK = const(0x1F)
 _TIMER_CTL_MASK = const(0x03)
@@ -94,12 +95,12 @@ _MSF = const(0x80)
 _WDTF = const(0x40)
 _TSF2 = const(0x20)
 _ALARM_AF = const(0x10)
-_TIMER_TF = const(0x04)
+_TIMESTAMP_TIE = const(0x04)
 _ALARM_AIE = const(0x02)
-_TIMER_TIE = const(0x01)
-_TIMER_TE = const(0x80)
-_TIMER_TD10 = const(0x03)
-_NO_ALARM = const(0xFF)
+
+_BATTERY_LOW_BLF = const(0x04)
+_BATTERY_LOW_INT_BLIE = const(0x01)
+
 _ALARM_ENABLE = const(0x80)
 
 _TCR_MASK = const(0xC0)
@@ -278,7 +279,7 @@ class PCF2129:
         """Set/reset second interrupt
         """
         if flag is None:
-            return bool(self.__read_byte(_STAT1_REG) & _MI)
+            return bool(self.__read_byte(_STAT1_REG) & _SI)
         elif flag:
             self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) | _SI
         else:
@@ -301,13 +302,30 @@ class PCF2129:
         self.__write_byte(_SQW_REG, self._buffer[_SQW_REG])
 
     def aging_offset(self, value=None):
-        """Set clock offset, from 0 (+8 ppm) to 15 (-7 ppm); default is 8 (0 ppm).
+        """Read/Set clock offset, from 0 (+8 ppm) to 15 (-7 ppm); default is 8 (0 ppm).
         """
         if value is None:
             self._buffer[_AGING_REG] = self.__read_byte(_AGING_REG)
             return self._buffer[_AGING_REG]
         self._buffer[_AGING_REG] = value & 0x0F
         self.__write_byte(_AGING_REG, self._buffer[_AGING_REG])
+
+    def battery_low_flag(self):
+        """Read battery low flag (BLF)
+        """
+        self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG)
+        return bool(self._buffer[_STAT3_REG] & _BATTERY_LOW_BLF)
+
+    def battery_low_int(self, value=None):
+        """Read/Set battery low interrupt (BLIE)
+        """
+        if value is None:
+            return bool(self.__read_byte(_STAT3_REG) & _BATTERY_LOW_INT_BLIE)
+        elif value:
+            self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG) | _BATTERY_LOW_INT_BLIE
+        else:
+            self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG) & ~_BATTERY_LOW_INT_BLIE
+        self.__write_byte(_STAT3_REG, self._buffer[_STAT3_REG])
 
     def check_if_alarm_on(self):
         """Read the register to get the alarm enabled
