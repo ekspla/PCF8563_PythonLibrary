@@ -84,9 +84,9 @@ _WEEKDAY_MASK = const(0x07)
 _YEAR_MASK = const(0xff)
 _DATE_MASK = const(0x3F)
 _MONTH_MASK = const(0x1F)
-_TIMER_CTL_MASK = const(0x03)
 
 _STOP = const(0x20)
+_POR_OVRD = const(0x08)
 #_H12 = const(0x04)  # 12 hour (am./pm.) mode currently not supported.
 _MI = const(0x02)
 _SI = const(0x01)
@@ -142,6 +142,7 @@ class PCF2129:
         if self.check_osc_stop():
             self.otp_refresh()
         self.set_clk_out_frequency(CLK_HIGH_IMPEDANCE)
+        self.__poweron_reset_override(False)
 
     def __write_byte(self, reg, val):
         self._bytebuf[0] = val & 0xff
@@ -176,6 +177,14 @@ class PCF2129:
             - year // 100 + year // 400)
             % 7)
         return weekday
+
+    def __poweron_reset_override(self, flag):
+        self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG)
+        if flag:
+            self._buffer[_STAT1_REG] |= _POR_OVRD
+        else:
+            self._buffer[_STAT1_REG] &= ~_POR_OVRD
+        self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
 
     def datetime(self):
         """Return a tuple such as (year, month, date, weekday, hours, minutes,
@@ -341,9 +350,7 @@ class PCF2129:
     def clear_alarm(self):
         """Clear status register.
         """
-        self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG)
-        self._buffer[_STAT2_REG] &= ~_ALARM_AF
-        self._buffer[_STAT2_REG] |= _TIMER_TF
+        self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG) & ~_ALARM_AF
 
         self._buffer[_ALARM_MINUTES_REG] = self._buffer[_ALARM_HOURS_REG] \
             = self._buffer[_ALARM_DATE_REG] = self._buffer[_ALARM_WEEKDAY_REG] \
@@ -362,7 +369,7 @@ class PCF2129:
         """
         self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG)
         self._buffer[_STAT2_REG] &= ~_ALARM_AF
-        self._buffer[_STAT2_REG] |= (_TIMER_TF | _ALARM_AIE)
+        self._buffer[_STAT2_REG] |= ALARM_AIE
         self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
 
     def disable_alarm_interrupt(self):
@@ -370,7 +377,6 @@ class PCF2129:
         """
         self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG)
         self._buffer[_STAT2_REG] &= ~(_ALARM_AF | _ALARM_AIE)
-        self._buffer[_STAT2_REG] |= _TIMER_TF
         self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
 
     def set_daily_alarm(self, hours=None, minutes=None, seconds=None, date=None, weekday=None):
