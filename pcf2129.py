@@ -178,7 +178,7 @@ class PCF2129:
             % 7)
         return weekday
 
-    def __poweron_reset_override(self, flag):
+    def __poweron_reset_override(self, flag=False):
         self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG)
         if flag:
             self._buffer[_STAT1_REG] |= _POR_OVRD
