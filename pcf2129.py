@@ -104,10 +104,6 @@ _BATTERY_LOW_INT_BLIE = const(0x01)
 _ALARM_ENABLE = const(0x80)
 
 _TCR_MASK = const(0xC0)
-#_TCR_4MIN = const(0x00)  # Default
-#_TCR_2MIN = const(0x40)
-#_TCR_1MIN = const(0x80)
-#_TCR_30SEC = const(0xC0)
 _OTP = const(0x20)
 CLK_OUT_FREQ_32_DOT_768KHZ = const(0x00)  # Default
 CLK_OUT_FREQ_16_DOT_384KHZ = const(0x01)
@@ -230,7 +226,6 @@ class PCF2129:
         self._buffer[_MONTH_REG] = self.__dec2bcd(month)
         self._buffer[_YEAR_REG] = self.__dec2bcd(year)
 
-        # STOP/START not necessary because of the compensation by internal watchdog.
         self.__write_bytes(_DATETIME_REG, self._mv_datetime)
 
     def temp_control(self, value=None):
@@ -270,7 +265,7 @@ class PCF2129:
                        dt[6], dt[2], dt[1], dt[0] % 100)
 
     def write_now(self):
-        """Write the current system time to PCF8563
+        """Write the current system time to PCF2129
         """
         self.set_datetime(time.localtime())
 
