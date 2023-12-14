@@ -118,6 +118,7 @@ CLK_OUT_FREQ_1_DOT_024KHZ = const(0x05)
 CLK_OUT_FREQ_1_HZ = const(0x06)
 CLK_HIGH_IMPEDANCE = const(0x07)
 
+_TI_TP = const(0x20)
 
 class PCF2129:
     def __init__(self, i2c, address=_SLAVE_ADDRESS):
@@ -273,26 +274,26 @@ class PCF2129:
         """
         self.set_datetime(time.localtime())
 
-    def minute_int(self, flag=None):
+    def minute_int(self, flag=None, pulsed=True):
         """Set/reset minute interrupt
         """
-        if flag is None:
-            return bool(self.__read_byte(_STAT1_REG) & _MI)
-        elif flag:
-            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) | _MI
-        else:
-            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) & ~_MI
-        self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
+        return self.__mi_si(_MI, flag, pulsed)
 
-    def second_int(self, flag=None):
+    def second_int(self, flag=None, pulsed=True):
         """Set/reset second interrupt
         """
+        return self.__mi_si(_SI, flag, pulsed)
+
+    def __mi_si(self, mi_si_bit, flag, pulsed):
+        self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG)
         if flag is None:
-            return bool(self.__read_byte(_STAT1_REG) & _SI)
+            return bool(self._buffer[_STAT1_REG] & mi_si_bit)
         elif flag:
-            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) | _SI
+            self._buffer[_STAT1_REG] |= mi_si_bit
         else:
-            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) & ~_SI
+            self._buffer[_STAT1_REG] &= ~mi_si_bit
+        self.pulsed_mi_si(flag=pulsed)
+        self.minute_second_flag(False)  # Clear MSF, maybe useful for polling
         self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
 
     def minute_second_flag(self, flag=None):
@@ -303,6 +304,20 @@ class PCF2129:
             return bool(self._buffer[_STAT2_REG] & _MSF)
         self._buffer[_STAT2_REG] &= ~_MSF
         self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
+
+    def pulsed_mi_si(self, flag=None):
+        """Read/set/reset TI_TP flag
+        
+        INT is pulsed/permanent for True/False.
+        """
+        self._buffer[_TIMER1_REG] = self.__read_byte(_TIMER1_REG)
+        if flag is None:
+            return bool(self._buffer[_TIMER1_REG] & _TI_TP)
+        elif flag:
+            self._buffer[_TIMER1_REG] |= _TI_TP
+        else:
+            self._buffer[_TIMER1_REG] &= ~_TI_TP
+        self.__write_byte(_TIMER1_REG, self._buffer[_TIMER1_REG])
 
     def set_clk_out_frequency(self, frequency=CLK_OUT_FREQ_1_HZ):
         """Set the clock output pin frequency
@@ -369,7 +384,7 @@ class PCF2129:
         """
         self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG)
         self._buffer[_STAT2_REG] &= ~_ALARM_AF
-        self._buffer[_STAT2_REG] |= ALARM_AIE
+        self._buffer[_STAT2_REG] |= _ALARM_AIE
         self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
 
     def disable_alarm_interrupt(self):
