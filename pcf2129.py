@@ -16,9 +16,9 @@ the compensation is not useful for the lost two 1-Hz ticks.
 NOTE:
   The definitions of weekday in machine.RTC depends on ports; e.g. a range 
 of [0,6] from MON to SUN in ESP32 while [1,7] in STM32 (Pyboard).  Adjust the 
-range appropriately.  Though the __get_weekday() function is implemented 
-as [0,6] from SUN to SAT as per NXP's datasheet, it can be any value 
-from 0 to 6.
+range appropriately.  In contrast to the NXP's datasheet (from SUN to SAT), 
+the definition of __get_weekday() shown below is similar to those of 
+time.localtime() ([0,6] from MON to SUN) for convenience.
 
 
 MIT License
@@ -172,7 +172,7 @@ class PCF2129:
             month += 12
             year -= 1
         weekday = (
-            (date + (13 * month + 8) // 5 + year + year // 4 
+            (-1 + date + (13 * month + 8) // 5 + year + year // 4 
             - year // 100 + year // 400)
             % 7)
         return weekday
