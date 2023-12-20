@@ -143,6 +143,7 @@ class PCF2129:
         self._mv_datetime = self._mv[_SEC_REG:_YEAR_REG + 1]
         self._mv_timers = self._mv[_TIMER1_REG:_TIMER2_REG + 1]
         self._mv_alarms = self._mv[_ALARM_SECONDS_REG:_ALARM_WEEKDAY_REG + 1]
+        self._mv_timestamp = self._mv[_TS_SEC_REG:_TS_YR_REG +1]
         self._DATETIME_MASK = bytes((
             _minuteS_MASK, 
             _minuteS_MASK, 
@@ -515,7 +516,6 @@ class PCF2129:
     def read_timestamp(self):
         """Read timestamp.  Useful for both battery switch-over and timestamp.
         """
-        #_TS_SEC_REG, _TS_MIN_REG, _TS_HR_REG, _TS_DATE_REG, _TS_MON_REG, _TS_YR_REG
         ts_mask = bytes((
             _minuteS_MASK, 
             _minuteS_MASK, 
@@ -523,11 +523,10 @@ class PCF2129:
             _DATE_MASK, 
             _MONTH_MASK, 
             _YEAR_MASK))
-        ts_values = bytearray(len(ts_mask))
-        self.__read_bytes(_TIMESTAMPS_REG, ts_values)
+        self.__read_bytes(_TIMESTAMPS_REG, self._mv_timestamp)
 
         seconds, minutes, hours, date, month, year = (
             self.__bcd2dec(a & b) for a, b in zip(
-            ts_values, ts_mask))
+            self._mv_timestamp, ts_mask))
 
         return (year, month, date, hours, minutes, seconds)
