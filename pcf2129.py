@@ -1,11 +1,11 @@
 '''
 DEC. 2023, the modified PCF8563 code was adapted to PCF2129 by ekspla.
-Functions such as timers, watchdogs, timestamps, 12 hour mode, etc. not supported.
+Functions such as timers, watchdogs, 12 hour mode, etc. not supported.
 
 
 NOV. 2023, modified by ekspla.
 
-The code was modified to read/write mutiple date & time registers at once.
+The code was modified to read/write multiple date & time registers at once.
 
 CAUTION:
   From the datasheets and application notes (e.g. AN10652), it is clear that 
@@ -76,6 +76,13 @@ _TIMER1_REG = _TIMERS_REG = const(0x10)
 _TIMER2_REG = const(0x11)
 
 # From 0x12 to 0x18: timestamp registers 
+_TIMESTP_CTL_REG = const(0x12)
+_TS_SEC_REG = _TIMESTAMPS_REG = const(0x13)
+_TS_MIN_REG = const(0x14)
+_TS_HR_REG = const(0x15)
+_TS_DATE_REG = const(0x16)
+_TS_MON_REG = const(0x17)
+_TS_YR_REG = const(0x18)
 
 _AGING_REG = const(0x19)  # From 0 (+8) to 15 (-7 ppm); default is 8 (0 ppm).
 
@@ -88,6 +95,7 @@ _DATE_MASK = const(0x3F)
 _MONTH_MASK = const(0x1F)
 
 _STOP = const(0x20)
+_TSF1 = const(0x10)
 _POR_OVRD = const(0x08)
 #_H12 = const(0x04)  # 12 hour (am./pm.) mode currently not supported.
 _MI = const(0x02)
@@ -100,6 +108,8 @@ _ALARM_AF = const(0x10)
 _TIMESTAMP_TIE = const(0x04)
 _ALARM_AIE = const(0x02)
 
+_BATTERY_TS_ENABLE = const(0x10)
+_BATTERY_SWITCHOVER_FLAG = const(0x08)
 _BATTERY_LOW_BLF = const(0x04)
 _BATTERY_LOW_INT_BLIE = const(0x01)
 
@@ -117,6 +127,9 @@ CLK_OUT_FREQ_1_HZ = const(0x06)
 CLK_HIGH_IMPEDANCE = const(0x07)
 
 _TI_TP = const(0x20)
+
+_TS_FIRST_LAST = const(0x80)
+_TS_OFF = const(0x40)
 
 class PCF2129:
     def __init__(self, i2c, address=_SLAVE_ADDRESS):
@@ -430,3 +443,91 @@ class PCF2129:
             self._buffer[_ALARM_WEEKDAY_REG] = self.__dec2bcd(weekday) & _WEEKDAY_MASK
 
         self.__write_bytes(_ALARMS_REG, self._mv_alarms)
+
+    def set_timestamp(self, on_off=None, mode=False):
+        """Read/Set timestamp; mode[T/F] = first/last(default) event
+        """
+        self._buffer[_TIMESTP_CTL_REG] = self.__read_byte(_TIMESTP_CTL_REG)
+        if on_off is None:
+            return not bool(self._buffer[_TIMESTP_CTL_REG] & _TS_OFF)
+        elif on_off:
+            # Disable battery switch-over timestamp
+            self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG) & ~_BATTERY_TS_ENABLE
+            self.__write_byte(_STAT3_REG, self._buffer[_STAT3_REG])
+            # Set TS ON
+            self._buffer[_TIMESTP_CTL_REG] &= ~_TS_OFF
+            if mode: # The first event
+                self._buffer[_TIMESTP_CTL_REG] |= _TS_FIRST_LAST
+            else: # The last event
+                self._buffer[_TIMESTP_CTL_REG] &= ~_TS_FIRST_LAST
+        else: # Set TS OFF
+            self._buffer[_TIMESTP_CTL_REG] |= _TS_OFF
+        self.__write_byte(_TIMESTP_CTL_REG, self._buffer[_TIMESTP_CTL_REG])
+
+    def set_battery_timestamp(self, on_off=None):
+        """Read/Set battery switch-over timestamp
+        """
+        self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG)
+        if on_off is None:
+            is_battery_ts_enabled = bool(self._buffer[_STAT3_REG] & _BATTERY_TS_ENABLE)
+            is_battery_so_occurred = bool(self._buffer[_STAT3_REG] & _BATTERY_SWITCHOVER_FLAG)
+            return (is_battery_ts_enabled and is_battery_so_occurred)
+        elif on_off:
+            # Set timestamp OFF
+            self._buffer[_TIMESTP_CTL_REG] = self.__read_byte(_TIMESTP_CTL_REG) | _TS_OFF
+            self.__write_byte(_TIMESTP_CTL_REG, self._buffer[_TIMESTP_CTL_REG])
+            # Set BTSE ON
+            self._buffer[_STAT3_REG] |= _BATTERY_TS_ENABLE
+        else:
+            # Set BTSE OFF
+            self._buffer[_STAT3_REG] &= ~_BATTERY_TS_ENABLE
+        self._buffer[_STAT3_REG] &= ~_BATTERY_SWITCHOVER_FLAG
+        self.__write_byte(_STAT3_REG, self._buffer[_STAT3_REG])
+
+    def timestamp_flag1(self, value=None):
+        """Read/Clear timestamp flag1
+        """
+        if value is None:
+            return bool(self.__read_byte(_STAT1_REG) & _TSF1)
+        else:
+            self._buffer[_STAT1_REG] = self.__read_byte(_STAT1_REG) & ~_TSF1
+            self.__write_byte(_STAT1_REG, self._buffer[_STAT1_REG])
+
+    def timestamp_flag2(self, value=None):
+        """Read/Clear timestamp flag2
+        """
+        if value is None:
+            return bool(self.__read_byte(_STAT2_REG) & _TSF2)
+        else:
+            self._buffer[_STAT2_REG] = self.__read_byte(_STAT2_REG) & ~_TSF2
+            self.__write_byte(_STAT2_REG, self._buffer[_STAT2_REG])
+
+    def battery_switchover(self, value=None):
+        """Read/Clear battery switch-over flag
+        """
+        self._buffer[_STAT3_REG] = self.__read_byte(_STAT3_REG)
+        if value is None:
+            return bool(self._buffer[_STAT3_REG] & _BATTERY_SWITCHOVER_FLAG)
+        else:
+            self._buffer[_STAT3_REG] &= ~_BATTERY_SWITCHOVER_FLAG
+            self.__write_byte(_STAT3_REG, self._buffer[_STAT3_REG])
+
+    def read_timestamp(self):
+        """Read timestamp.  Useful for both battery switch-over and timestamp.
+        """
+        #_TS_SEC_REG, _TS_MIN_REG, _TS_HR_REG, _TS_DATE_REG, _TS_MON_REG, _TS_YR_REG
+        ts_mask = bytes((
+            _minuteS_MASK, 
+            _minuteS_MASK, 
+            _HOUR_MASK, 
+            _DATE_MASK, 
+            _MONTH_MASK, 
+            _YEAR_MASK))
+        ts_values = bytearray(len(ts_mask))
+        self.__read_bytes(_TIMESTAMPS_REG, ts_values)
+
+        seconds, minutes, hours, date, month, year = (
+            self.__bcd2dec(a & b) for a, b in zip(
+            ts_values, ts_mask))
+
+        return (year, month, date, hours, minutes, seconds)
